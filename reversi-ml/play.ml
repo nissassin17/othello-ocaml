@@ -195,8 +195,8 @@ let pos_b1 = (4, 2)
 let pos_b2 = (4, 3)
 let pos_start = (4, 4)
 
-let val_max = 99 * 64 + 1
-let val_min = -99 * 64 - 1
+let val_max = val_corner * 64 + 1
+let val_min = - val_max
 
 let all_pos =
     let mix xs ys =
@@ -302,6 +302,8 @@ let pos_val_map =
     let val_list = [val_corner; val_c; val_x; val_a; val_a1; val_a2; val_b; val_b1; val_b2; val_start] in
     List.fold_left (fun map (pos, value) -> PosMap.add pos value map ) PosMap.empty (List.map2 (fun pos value -> (pos, value)) pos_list val_list)
 
+let pos_val pos = PosMap.find pos pos_val_map
+
 (*******************BOARD*******************)
 
 let dirs = [ (-1,-1); (0,-1); (1,-1); (-1,0); (1,0); (-1,1); (0,1); (1,1) ]
@@ -340,8 +342,13 @@ let board_do_move board com =
     | Mv (i,j) ->
         let ms = flippable_indices board (i,j) in
             List.fold_left (fun bb (ii, jj) -> board_set_black bb (ii, jj)) board ms
+let doMove board com color =
+    if color = black then
+        board_do_move board com
+    else
+        board_swap (board_do_move (board_swap board) com)
 let minimax_move board pos =
-    board_swap (board_do_move board (Mv pos))
+    board_swap (board_do_move board (Mv (Pervasives.fst pos, Pervasives.snd pos)))
 
 (*always started by black*)
 (* map board to list of board*)
@@ -356,15 +363,14 @@ let opening_map =
         OpeningMap.add board (next_board::current_list) map
     in
     List.fold_left (fun map moves_list ->
-        let m, b, c  = List.fold_left (fun (mm, board) pos ->
+        Pervasives.fst (List.fold_left (fun (mm, board) pos ->
             if is_valid_move board pos then
                 let bb = minimax_move board pos in
                     opening_map_add board bb mm, bb
             else
                 mm, board
             ) (map, board_init ()) moves_list
-        in
-            m
+        )
     ) OpeningMap.empty openings
 
 let board_refine board color =
@@ -373,28 +379,6 @@ let board_refine board color =
 let valid_moves board =
   List.filter (is_valid_move board) all_pos
 
-(*use bfs to search*)
-(*tail recursive*)
-let rec minimax_expand map queue board_list cnt =
-    if cnt >= threshold || Queue.is_empty queue then
-        board_list, map
-    else
-        let board = Queue.pop queue in
-        let mm, bbl, cc =
-            List.fold_left (fun mm bbl cc pos ->
-                let bb = minimax_move board pos in
-                    if OpeningMap.mem bb mm then
-                        mm, bbl, cc
-                    else
-                        let _ = Queue.push bb queue in
-                        let bval = board_eval bb in
-                        let mmm = OpeningMap.add bb (bval, bval) mm in
-                        let bbbl = bb::bbl in
-                        mmm, bbbl, cc + 1
-            ) (map, board_list, cnt) (valid_moves board)
-        in
-            minimax_expand mm queue bbl cc
-
 let board_eval_core board =
     List.fold_left (fun v pos ->
         if board_get_color board pos = black then
@@ -402,77 +386,30 @@ let board_eval_core board =
         else
             v
            ) 0 all_pos
+
 let board_eval board =
     (board_eval_core board) - (board_eval_core (board_swap board))
 
-(*pop all board from board_list then evaluate using minimax*)
-let rec minimax map board_list
-    [] -> map
-    | board::rest ->
-        List.fold_left (fun map pos -> ) map (valid_moves board)
-
-(*return a map that maps all next moves to theirs min, max value*)
-let board_minimax board =
-    let init_queue = Queue.create () in
-    let _ = Queue.push board init_queue in
-    let init_map = Minimax.add board (val_max, val_min) Minimax.empty in
-    let board_list, map = minimax_expand init_map init_queue [] 1 in
-        List.fold_left (fun map bb ->
-            let bcount, wcount = count bb black, count bb white in
-            if bcount + wcount = 64 then (*end game*)
-                if bcount > wcount then Minimax.add bb (val_max, val_max) (*win*)
-                else
-                    if bcount = wcount then Minimax.add bb (0, 0) (*tie*)
-                    else Minimax.add bb (val_min, val_min) (*lose*)
-            else
-                let List.fold_left (fun mm pos ->
-                    let bbb = minimax_move bb pos in
-                    if Minimax.mem bbb then
-                        let new_min, new_max = Minimax.find bbb in
-                        let old_min, old_max = Minimax.find bb in
-                            if new_min < old_min || new_max > old_max then
-                                Minimax.add bb (Pervasives.min new_min old_min, Pervasives new_max old_max)
-                    else
-                        mm
-        ) map (valid_moves bb)
-    ) map board_list
-
-let play board' color =
-    let board = board_refine board' color in
-    let ms =
-        if OpeningMap.mem board openingMap then
-            let bb::_ = OpeningMap.find board openingMap in
-            List.fold_left (fun current pos -> if Pervasives.fst current != 0 then
-                current
-            else
-                if board_encode (minimax_move board pos) = board_encode bb then
-                    pos::current
-                else
-                    current
-            ) [] all_pos
-        else
-        let minimax = board_minimax board in
-            (List.fold_left (fun current pos ->
-                match current with
-                [] -> [pos]
-                | any::_ ->
-                    let (_, current_max) = Minimax.find (minimax_move board pos) minimax in
-                    let (_, iter_max) =  Minimax.find (minimax_move board pos) minimax in
-                    if current_max = iter_max then
-                        pos :: current
-                    else
-                        if current_max < iter_max then
-                            current
-                        else
-                            [pos]
-            ) [] (valid_moves board)
-    in
-    if ms = [] then
-      Pass
+(*use bfs to search*)
+(*tail recursive*)
+let rec minimax_expand map queue board_list cnt =
+    if cnt >= threshold || Queue.is_empty queue then
+        map, board_list
     else
-        let k = Random.int (List.length ms) in
-        let (i,j) = List.nth ms k in
-            Mv (i,j)
+        let board = Queue.pop queue in
+        let mm, bbl, cc =
+            List.fold_left (fun (mm, bbl, cc) pos ->
+                let bb = minimax_move board pos in
+                    if Minimax.mem bb mm then
+                        mm, bbl, cc
+                    else
+                        let _ = Queue.push bb queue in
+                        let mmm = Minimax.add bb (board_eval bb) mm in
+                        let bbbl = bb::bbl in
+                        mmm, bbbl, cc + 1
+            ) (map, board_list, cnt) (valid_moves board)
+        in
+            minimax_expand mm queue bbl cc
 
 let count board color =
   let s = ref 0 in
@@ -483,6 +420,81 @@ let count board color =
     done;
     !s
 
+(*return a map that maps all next moves to theirs min, max value*)
+let board_minimax board =
+    let init_queue = Queue.create () in
+    let _ = Queue.push board init_queue in
+    let init_map = Minimax.add board (board_eval board) Minimax.empty in
+    let init_map', board_list = minimax_expand init_map init_queue [] 1 in
+        List.fold_left (fun map bb ->
+            let bcount, wcount = count bb black, count bb white in
+            if bcount + wcount = 64 then (*end game*)
+                if bcount > wcount then
+                    Minimax.add bb val_max map (*win*)
+                else
+                    if bcount = wcount then
+                        Minimax.add bb 0 map (*tie*)
+                    else
+                        Minimax.add bb val_min map (*lose*)
+            else
+                List.fold_left (fun mm pos ->
+                    let after_move = minimax_move bb pos in
+                    let new_max =
+                        if Minimax.mem after_move mm then
+                            - (Minimax.find after_move mm)
+                        else
+                            board_eval after_move
+                    in
+                    let old_max = Minimax.find bb mm in
+                        if new_max > old_max then
+                            Minimax.add bb (Pervasives.max new_max old_max) mm
+                        else
+                            mm
+                ) map (valid_moves bb)
+    ) init_map' board_list
+
+let play board' color =
+    let board = board_refine board' color in
+    let ms =
+        if OpeningMap.mem board opening_map then
+            match OpeningMap.find board opening_map with
+            bb::_ ->
+                List.fold_left (fun current pos ->
+                    if board_encode (minimax_move board pos) = board_encode bb then
+                        pos::current
+                    else
+                        current
+                ) [] all_pos
+            | _ -> []
+        else
+            []
+    in
+    let mms =
+        if ms = [] then
+            let minimax = board_minimax board in
+                List.fold_left (fun current pos ->
+                    match current with
+                    [] -> [pos]
+                    | first::_ ->
+                        let current_max = Minimax.find (minimax_move board first) minimax in
+                        let iter_max =  Minimax.find (minimax_move board pos) minimax in
+                        if current_max = iter_max then
+                            pos :: current
+                        else
+                            if current_max < iter_max then
+                                current
+                            else
+                                [pos]
+                ) [] (valid_moves board)
+        else
+            ms
+    in
+    if mms = [] then
+      Pass
+    else
+        let k = Random.int (List.length ms) in
+        let (i,j) = List.nth mms k in
+            Mv (i,j)
 
 let print_board board =
   print_endline " |A B C D E F G H ";
