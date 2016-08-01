@@ -2,6 +2,7 @@ type color = int
 let none     = 0
 let white    = 1 
 let black    = 2
+let sentinel = 3
 
 let opposite_color c = (2-c) + 1
 

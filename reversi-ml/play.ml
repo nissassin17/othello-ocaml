@@ -1,5 +1,5 @@
 (*configuration start*)
-let threshold = 100000000
+let threshold = 1000
 
 (*source: http://www.samsoft.org.uk/reversi/strategy.htm*)
 let val_corner = 99
@@ -215,32 +215,41 @@ let bit_set (num: int64) (pos: int) =
 let bit_get (num: int64) (pos: int) =
     (logand (shift_right_logical num pos) one) = one
 
+let bit_clear (num: int64) (pos: int) =
+    logand (lognot (shift_left one pos)) num
+
 (****************POS***************)
 (*pos encode and decode*)
 let pos_encode (x, y) =
     (x - 1) * 8 + y - 1
 
-let pos_decode (pos: int) =
-    (pos / 8 + 1, pos mod 8 + 1)
-let pos_rotate_one (x, y) = (9 - y, x)
-let pos_flip (x, y) = (y, x)
+let pos_decode (pos: int) = pos / 8 + 1, pos mod 8 + 1
+let pos_rotate_one (x, y) = 9 - y, x
+let pos_flip (x, y) = y, x
 let pos_sym_encode (x, y) =
     let mx, my = Pervasives.min x (9 - x), Pervasives.min y (9 - y) in
         pos_encode (Pervasives.max mx my, Pervasives.min mx my)
 (*move by black*)
-let board_set_black ((bb, bw) : board_t) pos = (bit_set bb (pos_encode pos), bw)
+let board_set_black ((bb, bw) : board_t) pos =
+    let pp = pos_encode pos in
+        bit_set bb pp, bit_clear bw pp
 
-let board_set_white (bb, bw) pos = (bb, bit_set bw (pos_encode pos))
+let board_set_white (bb, bw) pos =
+    let pp = pos_encode pos in
+        bit_clear bb pp, bit_set bw pp
 
-let board_get_color ((bb, bw) : board_t) opos =
-    let ipos = pos_encode opos in
-    if bit_get bb ipos then
-        black
+let board_get_color ((bb, bw) : board_t) (x, y) =
+    if x == 0 || x == 9 || y == 0 || y == 9 then
+        sentinel
     else
-        if bit_get bw ipos then
-            white
+        let ipos = pos_encode (x, y) in
+        if bit_get bb ipos then
+            black
         else
-            none
+            if bit_get bw ipos then
+                white
+            else
+                none
 
 let board_rotate_one board =
     List.fold_left (fun bb pos ->
@@ -309,39 +318,41 @@ let pos_val pos = PosMap.find pos pos_val_map
 let dirs = [ (-1,-1); (0,-1); (1,-1); (-1,0); (1,0); (-1,1); (0,1); (1,1) ]
 
 let flippable_indices_line board (di,dj) (i,j) =
-  let rec f (di,dj) (i,j) r =
-    if (board_get_color board (i, j)) = white then
-      g (di,dj) (i+di,j+dj) ( (i,j) :: r )
-    else
-      []
-  and    g (di,dj) (i,j) r =
-    if (board_get_color board (i, j)) = white then
-      g (di,dj) (i+di,j+dj) ( (i,j) :: r )
-    else if (board_get_color board (i, j)) = black then
-      r
-    else
-      [] in
+    let rec g (di,dj) (i,j) r =
+        if board_get_color board (i, j) = white then
+            g (di,dj) (i+di,j+dj) ( (i,j) :: r )
+        else if board_get_color board (i, j) = black then
+            r
+        else
+            []
+    in
+    let f (di,dj) (i,j) r =
+        if (board_get_color board (i, j)) = white then
+            g (di,dj) (i+di,j+dj) ( (i,j) :: r )
+        else
+            []
+    in
     f (di,dj) (i,j) []
 
 let flippable_indices board (i,j) =
   let bs = List.map (fun (di,dj) -> flippable_indices_line board (di,dj) (i+di,j+dj)) dirs in
     List.concat bs
 
-let is_effective board (i,j) =
-  match flippable_indices board (i,j) with
+let is_effective board pos =
+  match flippable_indices board pos with
       [] -> false
     | _  -> true
 
-let is_valid_move board (i,j) =
-  ((board_get_color board (i, j)) = none) && is_effective board (i,j)
+let is_valid_move board pos =
+  ((board_get_color board pos) = none) && is_effective board pos
 
 let board_do_move board com =
   match com with
       GiveUp  -> board
     | Pass    -> board
-    | Mv (i,j) ->
-        let ms = flippable_indices board (i,j) in
-            List.fold_left (fun bb (ii, jj) -> board_set_black bb (ii, jj)) board ms
+    | Mv (x, y) ->
+        let ms = flippable_indices board (x, y) in
+            board_set_black (List.fold_left (fun bb pp -> board_set_black bb pp) board ms) (x, y)
 let doMove board com color =
     if color = black then
         board_do_move board com
@@ -406,7 +417,7 @@ let rec minimax_expand map queue board_list cnt =
                         let _ = Queue.push bb queue in
                         let mmm = Minimax.add bb (board_eval bb) mm in
                         let bbbl = bb::bbl in
-                        mmm, bbbl, cc + 1
+                            mmm, bbbl, cc + 1
             ) (map, board_list, cnt) (valid_moves board)
         in
             minimax_expand mm queue bbl cc
@@ -492,7 +503,7 @@ let play board' color =
     if mms = [] then
       Pass
     else
-        let k = Random.int (List.length ms) in
+        let k = Random.int (List.length mms) in
         let (i,j) = List.nth mms k in
             Mv (i,j)
 
@@ -508,7 +519,6 @@ let print_board board =
   done;
   print_endline "  (X: Black,  O: White)"
 
-
 let report_result board =
   let _ = print_endline "========== Final Result ==========" in
   let bc = count board black in
@@ -523,3 +533,24 @@ let report_result board =
     print_string "White: "; print_endline (string_of_int wc);
     print_board board
 
+(*for debug*)
+let (>>) board ((x, y), color) =
+    doMove board (Mv (x, y)) color
+
+    (*
+let _ =
+let board = board_init () in
+let _ = print_board board in
+let ms = flippable_indices board (4, 3) in
+let board = board >> ((5, 6), black) >> ((6, 4), white) in
+let _ = print_board board in
+let board = board_swap board in
+let _ = print_board board in
+let board = board_swap board in
+let x , y = board in
+Printf.printf "%s %s\n" (to_string x) (to_string y)
+*)
+(*
+        11 1000 0001 0000 0000 0000 0000 0000 0000 0000
+ 1000 0001 1000 0000 1000 0000 0000 0000 0000 0000 0000
+ * *)
