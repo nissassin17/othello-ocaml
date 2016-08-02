@@ -1,8 +1,9 @@
 (*configuration start*)
-let threshold = 50
-let endgame_threshold = 34
+let threshold = 100
+let endgame_threshold = 30
 
 (*source: http://www.samsoft.org.uk/reversi/strategy.htm*)
+(*
 let val_corner = 99
 let val_c = -8
 let val_x = -24
@@ -13,6 +14,18 @@ let val_b = 6
 let val_b1 = -3
 let val_b2 = 4
 let val_start = 0
+*)
+
+let val_corner = 99
+let val_c = 0
+let val_x = 0
+let val_a = 8
+let val_a1 = 2
+let val_a2 = 7
+let val_b = 6
+let val_b1 = 3
+let val_b2 = 4
+let val_start = 1
 (*Named Openings
  * source: http://www.samsoft.org.uk/reversi/openings.htm#openings *)
 
@@ -406,16 +419,12 @@ let board_is_end_game board =
 let board_eval_core board =
     let is_end_game = board_is_end_game board in
         List.fold_left (fun v pos ->
-            let color = board_get_color board pos in
             let pval = if is_end_game then 1 else (pos_val pos) in
-                if color = black then
-                    v + pval
+                if board_get_color board pos = black then
+                    v + (if is_end_game then 1 else pos_val pos)
                 else
-                    if color = white then
-                        v - pval
-                    else
-                        v
-                   ) 0 all_pos
+                    v
+               ) 0 all_pos
 
 let board_eval board =
     (board_eval_core board) - (board_eval_core (board_swap board))
@@ -462,10 +471,11 @@ let board_minimax board =
                     let after_move = minimax_move bb pos in
                     let new_max =
                         if Minimax.mem after_move mm then
-                            - (Minimax.find after_move mm)
+                            Minimax.find after_move mm
                         else
                             board_eval after_move
                     in
+                    let new_max = -new_max in
                     let old_max = Minimax.find bb mm in
                         if new_max > old_max then
                             Minimax.add bb (Pervasives.max new_max old_max) mm
@@ -490,7 +500,7 @@ let play board' color =
         else
             []
     in
-    let mms =
+    let ms =
         if ms = [] then
             let minimax = board_minimax board in
                 List.fold_left (fun current pos ->
@@ -510,17 +520,17 @@ let play board' color =
         else
             ms
     in
-    let mmms =
-        if mms = [] then
+    let ms =
+        if ms = [] then
             valid_moves board
         else
-            mms
+            ms
     in
-    if mmms = [] then
+    if ms = [] then
       Pass
     else
-        let k = Random.int (List.length mmms) in
-        let (i,j) = List.nth mmms k in
+        let k = Random.int (List.length ms) in
+        let (i,j) = List.nth ms k in
             Mv (i,j)
 
 let print_board board =
