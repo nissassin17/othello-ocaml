@@ -16,15 +16,15 @@ let val_b2 = 4
 let val_start = 0
 *)
 
-let val_corner = 99
+let val_corner = 5
 let val_c = 0
 let val_x = 0
-let val_a = 8
-let val_a1 = 2
-let val_a2 = 7
-let val_b = 6
-let val_b1 = 3
-let val_b2 = 4
+let val_a = 3
+let val_a1 = 1
+let val_a2 = 1
+let val_b = 4
+let val_b1 = 1
+let val_b2 = 1
 let val_start = 1
 (*Named Openings
  * source: http://www.samsoft.org.uk/reversi/openings.htm#openings *)
@@ -372,7 +372,8 @@ let doMove board com color =
     else
         board_swap (board_do_move (board_swap board) com)
 let minimax_move board pos =
-    board_swap (board_do_move board (Mv (Pervasives.fst pos, Pervasives.snd pos)))
+    let ms = flippable_indices board pos in
+        board_swap (board_set_black (List.fold_left (fun bb pp -> board_set_black bb pp) board ms) pos)
 
 (*always started by black*)
 (* map board to list of board*)
@@ -414,6 +415,8 @@ let count board color =
 
 let board_is_end_game board =
     (count board black) + (count board white) >= endgame_threshold
+
+let board_is_finished (bb, bw) = (lognot (logor bb bw)) = zero
 
 let board_eval_core board =
     let is_end_game = board_is_end_game board in
@@ -459,8 +462,8 @@ let board_minimax board =
     (*let start = Sys.time () in*)
     let t =
         List.fold_left (fun map bb ->
-            let bcount, wcount = count bb black, count bb white in
-            if bcount + wcount = 64 then (*end game*)
+            if board_is_finished board then (*end game*)
+                let bcount, wcount = count bb black, count bb white in
                 if bcount > wcount then
                     Minimax.add bb val_max map (*win*)
                 else
