@@ -1,5 +1,5 @@
 (*configuration start*)
-let threshold = 100
+let threshold = 1000
 let endgame_threshold = 30
 
 (*source: http://www.samsoft.org.uk/reversi/strategy.htm*)
@@ -308,8 +308,7 @@ let board_encode (board: board_t) =
     List.fold_left (fun current iter -> Pervasives.min current iter) board ((board_rotated board) @ (board_rotated (board_flipped board)))
 module Board = struct
     type t = board_t
-    let compare b1 b2 =
-        let (x1, y1), (x2, y2) = board_encode b1, board_encode b2 in
+    let compare (x1, y1) (x2, y2) =
         if x1 != x2 then
             compare x1 x2
         else
@@ -419,12 +418,11 @@ let board_is_end_game board =
 let board_eval_core board =
     let is_end_game = board_is_end_game board in
         List.fold_left (fun v pos ->
-            let pval = if is_end_game then 1 else (pos_val pos) in
-                if board_get_color board pos = black then
-                    v + (if is_end_game then 1 else pos_val pos)
-                else
-                    v
-               ) 0 all_pos
+            if board_get_color board pos = black then
+                v + (if is_end_game then 1 else pos_val pos)
+            else
+                v
+           ) 0 all_pos
 
 let board_eval board =
     (board_eval_core board) - (board_eval_core (board_swap board))
@@ -455,7 +453,11 @@ let board_minimax board =
     let init_queue = Queue.create () in
     let _ = Queue.push board init_queue in
     let init_map = Minimax.add board (board_eval board) Minimax.empty in
+    (*let start = Sys.time () in*)
     let init_map', board_list = minimax_expand init_map init_queue [] 1 in
+    (*let _ = Printf.printf "expand time: %d %d %f s\n" (Minimax.cardinal init_map') (List.length board_list) (Sys.time() -. start) in*)
+    (*let start = Sys.time () in*)
+    let t =
         List.fold_left (fun map bb ->
             let bcount, wcount = count bb black, count bb white in
             if bcount + wcount = 64 then (*end game*)
@@ -483,6 +485,9 @@ let board_minimax board =
                             mm
                 ) map (valid_moves bb)
     ) init_map' board_list
+    in
+    (*let _ = Printf.printf "minimax time: %f s\n" (Sys.time() -. start) in*)
+    t
 
 let play board' color =
     let board = board_refine board' color in
