@@ -1,0 +1,24 @@
+- General: use minimax with BFS
++ Breath-first-search is used to create game tree for minimax algorithm.
++ BFS's queue is limited by "threshold" variable, higher threshold, better minimax result, but slower search.
+
+- Board evaluation:
++ Because minimax cannot go to end of the game, it has to evaluate the game board in the middle of the game.
++ Board's value is defined by "my potential value" - "rival's potential value".
++ Each player's potential value is the sum of all cells' positional value that their dices occupy.
++ If the board is finished (full or no one can take a move), board's value will be +inf, -inf, 0
+incase of the game result be win, lose, tie.
+
+- Cell's positional value:
++ There are totally 10 types of cell with their position values are defined at very first of the program code.
++ These defined values are only used in the start of the game (joban), after that (in the end of the game - syuban),
+all positional values will be fixed to 1.
+
+- Game status: "starting" or "ending"
++ Each board is defined to be "starting" or "ending" by "endgame_threshold" variable (number of dices in the board).
+
+- Moreover: opening game database
++ In the very start of the game, opening game database is also used.
+
+- Test
++ Play with threshold = 500, 10 games -> win all 10 games
