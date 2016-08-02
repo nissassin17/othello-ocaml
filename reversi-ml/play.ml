@@ -1,5 +1,6 @@
 (*configuration start*)
-let threshold = 1000
+let threshold = 50
+let endgame_threshold = 34
 
 (*source: http://www.samsoft.org.uk/reversi/strategy.htm*)
 let val_corner = 99
@@ -390,13 +391,31 @@ let board_refine board color =
 let valid_moves board =
   List.filter (is_valid_move board) all_pos
 
+let count board color =
+  let s = ref 0 in
+    for i=1 to 8 do
+      for j=1 to 8 do
+        if (board_get_color board (i, j)) = color then s := !s + 1
+      done
+    done;
+    !s
+
+let board_is_end_game board =
+    (count board black) + (count board white) >= endgame_threshold
+
 let board_eval_core board =
-    List.fold_left (fun v pos ->
-        if board_get_color board pos = black then
-            v + (pos_val pos)
-        else
-            v
-           ) 0 all_pos
+    let is_end_game = board_is_end_game board in
+        List.fold_left (fun v pos ->
+            let color = board_get_color board pos in
+            let pval = if is_end_game then 1 else (pos_val pos) in
+                if color = black then
+                    v + pval
+                else
+                    if color = white then
+                        v - pval
+                    else
+                        v
+                   ) 0 all_pos
 
 let board_eval board =
     (board_eval_core board) - (board_eval_core (board_swap board))
@@ -421,15 +440,6 @@ let rec minimax_expand map queue board_list cnt =
             ) (map, board_list, cnt) (valid_moves board)
         in
             minimax_expand mm queue bbl cc
-
-let count board color =
-  let s = ref 0 in
-    for i=1 to 8 do
-      for j=1 to 8 do
-        if (board_get_color board (i, j)) = color then s := !s + 1
-      done
-    done;
-    !s
 
 (*return a map that maps all next moves to theirs min, max value*)
 let board_minimax board =
@@ -500,11 +510,17 @@ let play board' color =
         else
             ms
     in
-    if mms = [] then
+    let mmms =
+        if mms = [] then
+            valid_moves board
+        else
+            mms
+    in
+    if mmms = [] then
       Pass
     else
-        let k = Random.int (List.length mms) in
-        let (i,j) = List.nth mms k in
+        let k = Random.int (List.length mmms) in
+        let (i,j) = List.nth mmms k in
             Mv (i,j)
 
 let print_board board =
