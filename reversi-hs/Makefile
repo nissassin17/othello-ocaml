@@ -1,14 +1,15 @@
 TARGETS=reversi-serv
 TARGETC=reversi
 SRCS=Play.hs Command.hs
+FLAGS=-XFlexibleContexts
 
 all: $(TARGETS) $(TARGETC)
 
 $(TARGETS): Server.hs $(SRCS)
-	ghc -O --make -o $(TARGETS) Server.hs 
+	ghc -O --make -o $(TARGETS) Server.hs  $(FLAGS)
 
 $(TARGETC): Client.hs $(SRCS)
-	ghc -O --make -o $(TARGETC) Client.hs 
+	ghc -O --make -o $(TARGETC) Client.hs  $(FLAGS)
 
 
 clean: 
